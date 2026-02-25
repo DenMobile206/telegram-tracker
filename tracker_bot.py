@@ -4,7 +4,8 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from telethon import TelegramClient, events
-from telethon.tl.types import UserStatusOnline, UserStatusOffline
+from telethon.tl.functions.users import GetUsersRequest
+from telethon.tl.types import InputUser, UpdateUserStatus, UserStatusOnline, UserStatusOffline
 
 # ========================
 # Настройки
@@ -39,7 +40,9 @@ def now_time() -> str:
 async def user_update_handler(event):
     if paused:
         return
-    if not event.status:
+
+    # event.online может быть True, False или None
+    if event.online is None:
         return
 
     try:
@@ -52,17 +55,51 @@ async def user_update_handler(event):
         return
 
     name = user.first_name or username
+    is_online = event.online
 
-    if isinstance(event.status, UserStatusOnline):
+    prev = last_status.get(username)
+    if prev == is_online:
+        return
+
+    last_status[username] = is_online
+
+    if is_online:
+        text = f'✅ {name} — зашёл в сеть 🕐 {now_time()}'
+    else:
+        text = f'⛔ {name} — вышел из сети 🕐 {now_time()}'
+
+    await bot.send_message(MY_CHAT_ID, text)
+
+
+@client.on(events.Raw(types=[UpdateUserStatus]))
+async def raw_status_handler(update):
+    if paused:
+        return
+
+    user_id = update.user_id
+    status = update.status
+
+    try:
+        user = await client.get_entity(user_id)
+    except Exception:
+        return
+
+    username = (user.username or '').lower()
+    if username not in [u.lower() for u in tracking_users]:
+        return
+
+    name = user.first_name or username
+
+    if isinstance(status, UserStatusOnline):
         is_online = True
-    elif isinstance(event.status, UserStatusOffline):
+    elif isinstance(status, UserStatusOffline):
         is_online = False
     else:
         return
 
     prev = last_status.get(username)
     if prev == is_online:
-        return  # Не дублировать уведомление
+        return
 
     last_status[username] = is_online
 
@@ -79,7 +116,12 @@ async def user_update_handler(event):
 # ========================
 async def get_user_status(username: str) -> str:
     try:
-        user = await client.get_entity(username)
+        entity = await client.get_entity(username)
+        # Принудительно запросить свежий статус
+        result = await client(GetUsersRequest(id=[entity.id]))
+        if not result:
+            return f'❓ @{username} — не удалось получить данные'
+        user = result[0]
         name = user.first_name or username
         status = user.status
         if isinstance(status, UserStatusOnline):
@@ -202,12 +244,31 @@ async def cmd_resume(message: types.Message):
 async def main():
     await client.start()
 
-    # Инициализировать статусы
+    # Подгрузить пользователей чтобы Telethon получал их обновления
     for username in tracking_users:
-        last_status[username] = None
+        try:
+            entity = await client.get_entity(username)
+            # Принудительно запросить свежие данные
+            result = await client(GetUsersRequest(id=[entity.id]))
+            if result:
+                user = result[0]
+                name = user.first_name or username
+                status = user.status
+                if isinstance(status, UserStatusOnline):
+                    last_status[username.lower()] = True
+                elif isinstance(status, UserStatusOffline):
+                    last_status[username.lower()] = False
+                else:
+                    last_status[username.lower()] = None
+                print(f'👤 {name} (@{username}) загружен')
+            else:
+                last_status[username.lower()] = None
+        except Exception as e:
+            print(f'❌ @{username}: {e}')
+            last_status[username.lower()] = None
 
     # Уведомить владельца о запуске
-    await bot.send_message(MY_CHAT_ID, '🚀 Трекер запущен!')
+    await bot.send_message(MY_CHAT_ID, f'🚀 Трекер запущен! Отслеживаю: {len(tracking_users)} чел.')
 
     # Запустить polling бота и Telethon параллельно
     await asyncio.gather(
