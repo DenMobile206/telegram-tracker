@@ -5,7 +5,16 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from telethon import TelegramClient, events
 from telethon.tl.functions.users import GetUsersRequest
-from telethon.tl.types import InputUser, UpdateUserStatus, UserStatusOnline, UserStatusOffline
+from telethon.tl.types import (
+    UserStatusOnline,
+    UserStatusOffline,
+    UserStatusRecently,
+    UserStatusLastWeek,
+    UserStatusLastMonth,
+    UpdateUserStatus,
+    InputPeerUser,
+)
+from telethon.tl.types import InputUser
 
 # ========================
 # Настройки
@@ -56,6 +65,7 @@ async def user_update_handler(event):
 
     name = user.first_name or username
     is_online = event.online
+    print(f'[DEBUG UserUpdate] user={user.username}, online={event.online}')
 
     prev = last_status.get(username)
     if prev == is_online:
@@ -89,6 +99,7 @@ async def raw_status_handler(update):
         return
 
     name = user.first_name or username
+    print(f'[DEBUG RawUpdate] user={user.username}, status={type(status).__name__}')
 
     if isinstance(status, UserStatusOnline):
         is_online = True
@@ -116,9 +127,14 @@ async def raw_status_handler(update):
 # ========================
 async def get_user_status(username: str) -> str:
     try:
-        entity = await client.get_entity(username)
-        # Принудительно запросить свежий статус
-        result = await client(GetUsersRequest(id=[entity.id]))
+        # Получить input entity для правильного access_hash
+        input_entity = await client.get_input_entity(username)
+
+        # Запросить свежие данные с сервера
+        result = await client(GetUsersRequest(id=[InputUser(
+            user_id=input_entity.user_id,
+            access_hash=input_entity.access_hash
+        )]))
         if not result:
             return f'❓ @{username} — не удалось получить данные'
         user = result[0]
@@ -129,6 +145,12 @@ async def get_user_status(username: str) -> str:
         elif isinstance(status, UserStatusOffline):
             last_seen = status.was_online.strftime('%d.%m.%Y %H:%M:%S') if status.was_online else 'неизвестно'
             return f'🔴 {name} (@{username}) — оффлайн (был(а) в сети: {last_seen})'
+        elif isinstance(status, UserStatusRecently):
+            return f'🟡 {name} (@{username}) — был(а) недавно'
+        elif isinstance(status, UserStatusLastWeek):
+            return f'🟠 {name} (@{username}) — был(а) на этой неделе'
+        elif isinstance(status, UserStatusLastMonth):
+            return f'🔵 {name} (@{username}) — был(а) в этом месяце'
         else:
             return f'⚪ {name} (@{username}) — статус скрыт или неизвестен'
     except Exception as e:
@@ -247,22 +269,28 @@ async def main():
     # Подгрузить пользователей чтобы Telethon получал их обновления
     for username in tracking_users:
         try:
-            entity = await client.get_entity(username)
-            # Принудительно запросить свежие данные
-            result = await client(GetUsersRequest(id=[entity.id]))
+            input_entity = await client.get_input_entity(username)
+            result = await client(GetUsersRequest(id=[InputUser(
+                user_id=input_entity.user_id,
+                access_hash=input_entity.access_hash
+            )]))
             if result:
                 user = result[0]
                 name = user.first_name or username
                 status = user.status
                 if isinstance(status, UserStatusOnline):
                     last_status[username.lower()] = True
+                    print(f'👤 {name} (@{username}) — онлайн')
                 elif isinstance(status, UserStatusOffline):
                     last_status[username.lower()] = False
+                    was = status.was_online.strftime('%H:%M:%S') if status.was_online else '?'
+                    print(f'👤 {name} (@{username}) — оффлайн (был в {was})')
                 else:
                     last_status[username.lower()] = None
-                print(f'👤 {name} (@{username}) загружен')
+                    print(f'👤 {name} (@{username}) — статус: {type(status).__name__}')
             else:
                 last_status[username.lower()] = None
+                print(f'❌ @{username}: пустой ответ')
         except Exception as e:
             print(f'❌ @{username}: {e}')
             last_status[username.lower()] = None
