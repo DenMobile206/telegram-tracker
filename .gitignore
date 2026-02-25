@@ -21,6 +21,7 @@ build/
 .env
 venv/
 env/
+.venv/
 
 # Logs
 online_log.txt

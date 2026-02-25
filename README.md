@@ -44,16 +44,31 @@ pip install -r requirements.txt
 1. Напишите боту [@userinfobot](https://t.me/userinfobot)
 2. Скопируйте ваш **Chat ID**
 
-### 6. Заполнить настройки в tracker_bot.py
+### 6. Настройка переменных окружения
 
-Откройте файл `tracker_bot.py` и заполните значения в начале файла:
+Скопируйте файл `.env.example` в `.env` и заполните своими данными:
 
-```python
-API_ID = 12345678              # Ваш api_id с my.telegram.org
-API_HASH = 'your_api_hash'    # Ваш api_hash с my.telegram.org
-BOT_TOKEN = '7123456789:AAH...'  # Токен от @BotFather
-MY_CHAT_ID = 123456789         # Ваш Chat ID от @userinfobot
-TRACK_USERS = ['username1', 'username2']  # Юзернеймы без @
+```bash
+cp .env.example .env
+```
+
+Откройте `.env` и заполните значения:
+
+```
+API_ID=12345678              # Ваш api_id с my.telegram.org
+API_HASH=your_api_hash_here  # Ваш api_hash с my.telegram.org
+BOT_TOKEN=your_bot_token     # Токен от @BotFather
+MY_CHAT_ID=123456789         # Ваш Chat ID от @userinfobot
+TRACK_USERS=username1,username2  # Юзернеймы без @, через запятую
+TFA_PASSWORD=                # 2FA пароль (оставьте пустым, если не используется)
+POLL_INTERVAL=10             # Интервал опроса в секундах
+TIMEZONE=Europe/Bucharest    # Ваш часовой пояс
+```
+
+Перед запуском загрузите переменные окружения:
+
+```bash
+export $(grep -v '^#' .env | xargs)
 ```
 
 ### 7. Запустить скрипт

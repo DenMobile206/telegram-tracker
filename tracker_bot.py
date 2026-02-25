@@ -1,5 +1,7 @@
 import asyncio
+import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -19,11 +21,14 @@ from telethon.tl.types import InputUser
 # ========================
 # Настройки
 # ========================
-API_ID = 12345678              # Получить на my.telegram.org
-API_HASH = 'your_api_hash'    # Получить на my.telegram.org
-BOT_TOKEN = '7123456789:AAH1bGc_someRandomString123'  # От @BotFather
-MY_CHAT_ID = 123456789         # Узнать через @userinfobot
-TRACK_USERS = ['username1', 'username2']  # Юзернеймы без @
+API_ID = int(os.environ['API_ID'])
+API_HASH = os.environ['API_HASH']
+BOT_TOKEN = os.environ['BOT_TOKEN']
+MY_CHAT_ID = int(os.environ['MY_CHAT_ID'])
+TRACK_USERS = [u.strip() for u in os.environ.get('TRACK_USERS', '').split(',') if u.strip()]
+TFA_PASSWORD = os.environ.get('TFA_PASSWORD', '')
+POLL_INTERVAL = int(os.environ.get('POLL_INTERVAL', '10'))
+TIMEZONE = ZoneInfo(os.environ.get('TIMEZONE', 'Europe/Bucharest'))
 
 # ========================
 # Инициализация
@@ -39,7 +44,7 @@ paused = False
 
 
 def now_time() -> str:
-    return datetime.now().strftime('%H:%M:%S')
+    return datetime.now(TIMEZONE).strftime('%H:%M:%S')
 
 
 # ========================
@@ -143,7 +148,7 @@ async def get_user_status(username: str) -> str:
         if isinstance(status, UserStatusOnline):
             return f'🟢 {name} (@{username}) — онлайн'
         elif isinstance(status, UserStatusOffline):
-            last_seen = status.was_online.strftime('%d.%m.%Y %H:%M:%S') if status.was_online else 'неизвестно'
+            last_seen = status.was_online.astimezone(TIMEZONE).strftime('%d.%m.%Y %H:%M:%S') if status.was_online else 'неизвестно'
             return f'🔴 {name} (@{username}) — оффлайн (был(а) в сети: {last_seen})'
         elif isinstance(status, UserStatusRecently):
             return f'🟡 {name} (@{username}) — был(а) недавно'
@@ -264,7 +269,7 @@ async def cmd_resume(message: types.Message):
 # Запуск
 # ========================
 async def main():
-    await client.start()
+    await client.start(password=TFA_PASSWORD if TFA_PASSWORD else lambda: input('Введите 2FA пароль: '))
 
     # Подгрузить пользователей чтобы Telethon получал их обновления
     for username in tracking_users:
